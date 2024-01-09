@@ -1,0 +1,674 @@
+---
+title: "Final Paper"
+author: "STOR 520 Group 2"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(tidytext)
+library(lubridate)
+library(DT)
+library(patchwork)
+library(htmltools)
+anime1=read_csv('https://opal.ils.unc.edu/~theozh/Anime-2.csv')
+ 
+```
+
+## Introduction
+In today's diverse anime industry, a deep understanding and analysis of the emotional trends in anime works are crucial for creators, distributors, and even anime enthusiasts. Anime is not just a form of entertainment, but also a key channel for cultural and emotional expression. By exploring the emotional elements in anime, we can better understand its appeal and impact on audiences. Our project, through a detailed analysis of a vast anime database, mainly focuses on shoujo (girls') and shounen (boys') anime, aiming to answer the following two core questions:
+
+**1.  How can sentiment analysis techniques be used to understand the emotional trends in shoujo and shounen anime over the years?** 
+
+This research focuses on whether anime maintains emotional stability and investigates whether there are significant emotional differences between different types of anime to reveal the evolution and characteristics of emotional expression in anime targeted at different audiences. What types of themes and genre combinations do girls and boys prefer? For example, storylines paired with romantic subtexts. The aim of this exploration is to understand the emotional atmosphere such combinations can create to cater to the tastes of adolescent audiences.
+
+**2. When examining the scores of anime targeting teenage audiences, which models are used to ensure the better predictions?**
+
+Our study employs Linear Regression, Random Forest Regression, and XGBoost Regression models to predict missing scores in our dataset. We compare these predictions with IMDb ratings and audience reviews to validate the effectiveness of our models in predicting viewer preferences.
+
+Through in-depth research on these two questions, our goal is to reveal the diversity and complexity of emotional expression in shoujo and shounen anime, providing richer insights for the creation and promotion of anime. Whether you are interested in the emotional aspects of anime works or want to understand the uniqueness of emotional expression in anime for girls and boys audiences, this project will offer valuable information and fresh perspectives.
+
+
+## Data
+
+In our project, we utilized a dataset named `Anime Database 2022` available on the Kaggle platform. However, this dataset was not collected by Kaggle itself, but rather through web scraping techniques from the MyAnimeList.net, one of the most popular anime websites that operate as a user-generated database, allowing registered users to create and maintain lists of anime and manga they have watched or read. This data scraping was conducted on September 20, 2022, and it gathered comprehensive details of 21,460 anime entries. Our primary focus was on specific variables related to the sentiment analysis of shoujo (girls') and shounen (boys') anime. We obtained it by filtering the **Demographics** column. The following data table consists the entire 2,701 entries of such anime. Each observation (or data row) represents an individual anime work and includes variables such as **Title**, **Favorites**, **Ratings**, and **Members**. Furthermore, for our subsequent analysis of audience preferences in shoujo and shounen anime, we also considered other variables like anime **Themes** and **Genres**. The following table provides an overview of the most important variables in our dataset:
+
+```{r, echo=F, warning=F, message=FALSE}
+anime.df = anime1 %>% 
+  filter(Demographics == "Shoujo" | Demographics == "Shounen") %>% 
+  select(1, 2, 6, 7, 8, 10, 17:28) %>% 
+  rename(Minutes = Duration_Minutes)
+
+datatable(anime.df, options = list(
+  pageLength = 3,
+  scrollX = TRUE,  # Add this line for horizontal scrollbar
+  columnDefs = list(
+    list(
+      targets = 3,
+      render = JS(
+        "function(data, type, row, meta) {",
+        "  if (type === 'display') {",
+        "    return data.length > 5 ?",
+        "      data.substr(0, data.indexOf(' ', 20)) + '...' :",
+        "      data;",
+        "  } else {",
+        "    return data;",
+        "  }",
+        "}"
+      )
+    )
+  )
+))
+
+```
+
+These variables are key elements that make up the anime database, collectively portraying a detailed profile of each anime. **ID** is a unique identification code assigned to each anime for easy tracking and reference. **Title** refers to the anime's original name. **Synopsis** provides a brief overview of the anime's content, while **Type** describes the format of the anime, such as TV series or film. **Episodes** indicates the number of episodes in the anime, and **Start_aired** records the date when the anime was first broadcasted. **Source** refers to the original material of the anime, for example, whether it is adapted from a manga or an original creation. **Genres** and **Themes** relate to the category and central ideas of the anime, such as science fiction, romance, or adventure. **Demographics** clarifies the primary audience the anime is aimed at, like boys or girls. **Minutes** typically refers to the duration of a single episode in minutes. **Rating** is the suitability level of content for different age audiences. **Score** reflects the overall evaluation of the anime by the audience, and **Ranked** shows the anime's relative position within the platform based on the score. **Members** refers to the number of users following the anime, and **Favorites** records the number of users who have marked the anime as their favorite. Together, these data provide a comprehensive picture of each anime, helping us understand and analyze anime works from multiple dimensions. 
+
+
+```{r, echo=F, warning=F, message=FALSE}
+ggplot(anime.df, aes(x = Demographics, y = Score, fill = Demographics)) +
+  geom_boxplot() +
+  labs(title = "Score Distribution of Shoujo and Shounen Anime",
+       x = "Demographics",
+       y = "Score") +
+  theme_bw()
+
+```
+
+We aim to gain insights from the box plot above depicting the distribution of scores for shoujo and shounen anime, as our ultimate focus involves exploring predictive models. We aspire to better understand and anticipate the scores assigned to anime specifically tailored for teenage audiences. Both have their median around 7. Additionally, the points above and below the boxes represent outliers, and we can see more outliers for Shounen anime, especially some with particularly low scores. While the average score for Shounen anime might be higher, there is also greater variability in its scores.
+
+
+## Results
+#### Part I Sentiment Analysis
+
+In Japanese, "shoujo" literally means girls and "shounen" means boys. Shoujo anime are typically geared towards young girls and women, while "shounen" anime are geared towards young boys and men, typically between the ages of 12 and 18. We focused on the **Demographics** variable from the complete anime dataset that contains more than 20,000 entries. This filtered dataset serves as a repository for us to gain meaningful insights into the world of both shoujo and shounen anime, as we intend to explore young women’s and men’s preferences and interests in anime.
+
+After applying the tidytext library to perform an innerjoin() with the Bing lexicon, which categorizes words into two groups: positive +1 and negative -1, we aggregated the scores to produce an overall sentiment score year-on-year for the text from the **Synopsis** variable. Our aim is to analyze the trend in sentiment over time.
+
+It seems that from 1966 to 2022, the sentiment scores for both shoujo and shounen anime appear to remain relatively stable, which suggests that both types of anime tend to maintain a relatively consistent emotional tone over time. However, the graph also shows that shoujo anime has a slightly higher positive sentiment score than shounen anime. This indicates that shoujo anime may have more elements of happiness, joy, and love, while shounen anime may have more elements of sadness, anger, and violence. These differences reflect the different preferences and interests of their target demographics.
+
+It’s also interesting to explore the extreme spikes in negative sentiment scores. This suggests that something specific may have influenced the emotional tone of shoujo anime in those particular years. Case in point is the anime "Pretty Guardians Sailor Moon Eternal The Movie Part 2", released in 2021. The portrayal of a post-solar eclipse Earth being shrouded in a dark force suggests a potentially dire and challenging situation for the characters, hence a strong negative sentiment.
+
+
+```{r, echo=F, warning=F, message=FALSE}
+shoujo_data=anime1 %>% 
+  filter(Demographics == "Shoujo") %>% 
+  select(-3,-4, -9, -c(11:16)) %>% 
+  rename(Minutes=Duration_Minutes) 
+
+shoujo_data$Start_Aired = as.Date(shoujo_data$Start_Aired, format = "%d-%b-%y")
+future_dates = !is.na(shoujo_data$Start_Aired) & shoujo_data$Start_Aired > Sys.Date()
+shoujo_data$Start_Aired[future_dates] = shoujo_data$Start_Aired[future_dates] - years(100)
+shoujo_data$Year <- format(shoujo_data$Start_Aired, "%Y")
+
+ 
+shounen_data=anime1 %>% 
+  filter(Demographics == "Shounen") %>% 
+  select(-3,-4, -9, -c(11:16)) %>% 
+  rename(Minutes=Duration_Minutes) 
+
+shounen_data$Start_Aired = as.Date(shounen_data$Start_Aired, format = "%d-%b-%y")
+future_dates = !is.na(shounen_data$Start_Aired) & shounen_data$Start_Aired > Sys.Date()
+shounen_data$Start_Aired[future_dates] = shounen_data$Start_Aired[future_dates] - years(100)
+shounen_data$Year <- format(shounen_data$Start_Aired, "%Y")
+```
+
+
+```{r, echo=F, warning=F, message=FALSE}
+
+bing_lexicon = get_sentiments("bing")
+process_sentiment_data <- function(dataset) {
+  dataset_tokens <- dataset %>%
+    mutate(Synopsis = tolower(Synopsis)) %>%
+    unnest_tokens(word, Synopsis)
+
+  dataset_sentiment_by_anime <- dataset_tokens %>%
+    inner_join(bing_lexicon) %>%
+    count(Start_Aired, sentiment) %>%
+    spread(sentiment, n, fill = 0) %>%
+    mutate(Sentiment = positive - negative)
+
+  return(dataset_sentiment_by_anime)
+}
+
+# Apply the function to shoujo_data and shonen_data
+shoujo_sentiment_by_anime <- process_sentiment_data(shoujo_data)
+shounen_sentiment_by_anime <- process_sentiment_data(shounen_data)
+```
+
+
+```{r, echo=F, warning=F, message=FALSE}
+shoujo_sentiment_by_anime$Start_Aired[is.na(shoujo_sentiment_by_anime$Start_Aired)] = median(shoujo_sentiment_by_anime$Start_Aired, na.rm = TRUE)
+shounen_sentiment_by_anime$Start_Aired[is.na(shounen_sentiment_by_anime$Start_Aired)] = median(shounen_sentiment_by_anime$Start_Aired, na.rm = TRUE)
+
+# Plotting both shoujo and shounen sentiment on the same plot
+ggplot() +
+  geom_point(data = shoujo_sentiment_by_anime, aes(Start_Aired, Sentiment, group = 1, color = "Shoujo")) +
+  geom_point(data = shounen_sentiment_by_anime, aes(Start_Aired, Sentiment, group = 1, color = "Shounen"), alpha=0.4) +
+  geom_smooth(data = shoujo_sentiment_by_anime, method='lm', se=FALSE, aes(Start_Aired, Sentiment, group = 1), color = "red") +
+  geom_smooth(data = shounen_sentiment_by_anime, method='lm', se=FALSE, aes(Start_Aired, Sentiment, group = 1), color = "darkblue") +
+  labs(title = "Sentiment Trends Over Years",
+       x = NULL,
+       y = "Sentiment Score",
+       color = "Anime Demographics") +
+  theme_bw() +
+  scale_x_date(breaks = scales::breaks_pretty(n = 12))
+```
+
+From the bar plots of the top 10 positive and negative terms for both anime, with error bars indicating the 95% confidence intervals, the highest frequency of the term "love" suggests a strong emphasis on romantic themes within the shoujo anime. “Love” significantly outranks the other term, more than twice as frequent as the second term “magical”. This corresponds with our preconceived notion that young women often have a preference for romance in their anime choices. It indicates that romance remains a potent and popular theme for shoujo anime audiences. The rest of the top terms suggest themes of magic, admiration, healing, excellence, and popularity.
+
+In shounen anime, the top positive terms suggest themes of personal growth, power, victory, protection, and mastery. These themes are common in shounen anime, which often feature young male protagonists who strive to become stronger, protect others, and overcome challenges. The relatively even distribution of these terms indicates a balance of these themes in shounen anime.
+
+The term “mysterious” appearing as the top negative term in both shoujo and shounen anime might be due to the nature of storytelling in these anime. The term “mysterious” might be categorized as negative because it often implies uncertainty, confusion, or potential danger. But in the context of anime, “mysterious” elements can make the story more engaging and exciting for the viewers. Its frequent appearance could be read as a sign of the richness in plot and character development.
+
+
+```{r, echo=F, warning=F, message=F, fig.width=10, fig.height=4}
+# Function to process data and calculate sentiments
+process_data <- function(data, lexicon) {
+  tokens <- data %>%
+    mutate(Synopsis = tolower(Synopsis)) %>%
+    unnest_tokens(word, Synopsis)
+
+  sentiments <- tokens %>%
+    inner_join(lexicon) 
+  
+  return(sentiments)
+}
+
+# Function to create plots
+plot_sentiments <- function(sentiments, title) {
+  positive_terms <- sentiments %>%
+    filter(sentiment == "positive") %>%
+    count(word, sort = TRUE) %>%
+    top_n(10)
+
+  negative_terms <- sentiments %>%
+    filter(sentiment == "negative") %>%
+    count(word, sort = TRUE) %>%
+    filter(word != "unknown") %>% 
+    top_n(10)
+
+  combined_terms <- bind_rows(
+    mutate(positive_terms, sentiment = "positive"),
+    mutate(negative_terms, sentiment = "negative")
+  )
+
+  combined_terms <- combined_terms %>%
+    group_by(sentiment, word) %>%
+    summarise(n = n, lower = n - 1.96*sqrt(n), upper = n + 1.96*sqrt(n))
+
+  ggplot(combined_terms, aes(x = reorder(word, n), y = n, fill = sentiment)) +
+    geom_bar(stat = "identity", position = 'dodge') +
+    geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.2, position = position_dodge(0.9)) +
+    labs(title = title,
+         x = NULL,
+         y = "Frequency") +
+    facet_wrap(~ sentiment, scales = "free_y") +
+    coord_flip() +
+    theme_bw()
+}
+
+# Shoujo analysis
+shoujo_sentiments <- process_data(shoujo_data, bing_lexicon)
+shoujo_plot <- plot_sentiments(shoujo_sentiments, "Top 10 Sentiment-Rich Terms in Shoujo Anime")
+
+# Shounen analysis
+shounen_sentiments <- process_data(shounen_data, bing_lexicon)
+shounen_plot <- plot_sentiments(shounen_sentiments, "Top 10 Sentiment-Rich Terms in Shounen Anime")
+
+# Print or save plots as needed
+print(shoujo_plot)
+print(shounen_plot)
+
+```
+
+We then calculated the sentiment score based on their ratings. It's no surprise that "R - 17+ (violence & profanity)" **Ratings** has the lowest sentiment score for both shoujo and shounen anime, as this rating normally has more violent, profane, or disturbing content that can affect the viewer’s emotions negatively.
+
+We are suprised to find that the "PG-13 - Teens 13" and "PG-13 - Teens 13" **Ratings**, which are supposed to have more enjoyable or relatable content that can elicit more positive emotions, reflect negative sentiment scores within shounen anime. 
+
+```{r, echo=F, warning=F, message=FALSE, fig.width=8, fig.height=2.5}
+# Function to aggregate sentiments and calculate statistics
+aggregate_sentiments <- function(data) {
+  aggregated_data <- data %>%
+    group_by(ID) %>%
+    summarise(
+      English = first(English),
+      Type = first(Type),
+      Episodes = first(Episodes),
+      Start_Aired = first(Start_Aired),
+      Year = first(Year),
+      Genres = first(Genres),
+      Themes = first(Themes),
+      Minutes = first(Minutes),
+      Rating = first(Rating),
+      Score = first(Score),
+      Scored_Users = first(Scored_Users),
+      Ranked = first(Ranked),
+      Popularity = first(Popularity),
+      Members = first(Members),
+      Favorites = first(Favorites),
+      sentiment = sum(ifelse(sentiment == "positive", 1, -1))
+    ) 
+
+  rating_groups <- split(aggregated_data, aggregated_data$Rating)
+
+  sentiment_stats <- lapply(rating_groups, function(group) {
+    n = nrow(group)
+    mean_sentiment = mean(group$sentiment)
+    sd_sentiment = sd(group$sentiment)
+
+    ci_lower = mean_sentiment - 1.96 * sd_sentiment / sqrt(n)
+    ci_upper = mean_sentiment + 1.96 * sd_sentiment / sqrt(n)
+
+    return(data.frame(Mean_Sentiment = mean_sentiment, 
+                      CI_lower = ci_lower,
+                      CI_upper = ci_upper))
+  })
+
+  sentiment_stats_df <- do.call(rbind, sentiment_stats)
+  rownames(sentiment_stats_df) = names(sentiment_stats)
+
+  return(list(aggregated_data = aggregated_data, sentiment_stats_df = sentiment_stats_df))
+}
+
+# Shoujo analysis
+shoujo_results <- aggregate_sentiments(shoujo_sentiments)
+
+# Shounen analysis
+shounen_results <- aggregate_sentiments(shounen_sentiments)
+
+# Access aggregated data and sentiment statistics
+shoujo_sentiments_aggregated <- shoujo_results$aggregated_data
+shoujo_sentiment_stats <- shoujo_results$sentiment_stats_df %>% 
+   filter(row.names(.) != 'None')
+
+shounen_sentiments_aggregated <- shounen_results$aggregated_data
+shounen_sentiment_stats <- shounen_results$sentiment_stats_df %>% 
+   filter(row.names(.) != 'None')
+
+# Plot for Shoujo
+shoujo_rating = ggplot(shoujo_sentiment_stats, aes(x = rownames(shoujo_sentiment_stats), y = Mean_Sentiment, fill = ifelse(Mean_Sentiment > 0, "positive", "negative"))) +
+  geom_bar(stat = "identity", width = 0.5) +
+  geom_errorbar(aes(ymin = CI_lower, ymax = CI_upper), width = 0.2) +
+  labs(x='', y = "Mean Sentiment", title = 'Sentiment by Ratings in Shoujo Anime') +
+  coord_flip() +
+  scale_fill_manual(values = c("positive" = "turquoise", "negative" = "#FF9999")) +
+  theme_bw()+
+  theme(legend.position = "none")
+
+# Plot for Shounen
+shounen_rating = ggplot(shounen_sentiment_stats, aes(x = rownames(shounen_sentiment_stats), y = Mean_Sentiment, fill = ifelse(Mean_Sentiment > 0, "positive", "negative"))) +
+  geom_bar(stat = "identity", width = 0.5) +
+  geom_errorbar(aes(ymin = CI_lower, ymax = CI_upper), width = 0.2) +
+  labs(x='', y = "Mean Sentiment", title = 'Sentiment by Ratings in Shounen Anime') +
+  coord_flip() +
+  scale_fill_manual(values = c("positive" = "turquoise", "negative" = "#FF9999")) +
+  theme_bw()+
+  theme(legend.position = "none")
+
+
+shoujo_rating
+shounen_rating
+```
+
+We proceeded to draw two heatmaps based on the average popularity score from the **Favorites** variable for different theme and genre combinations. This involves grouping the data by the **Themes** and **Genres** variables. The **Favorites** variable represents the number of users who have marked the anime as their favorite anime.
+
+The most popular combinations of theme and genre for shoujo anime are "Action" and "Delinquent". This combination suggests that viewers of shoujo anime appreciate narratives that involve conflict, action, and characters who are rebellious or non-conforming. This could indicate a desire for stories that break away from traditional norms and expectations, reflecting the complexities and challenges of adolescence. Shoujo anime viewers also love any combination of "Adult Cast" with either "Drama", "Romance", or "Slice of Life". It might due to their vested interest in mature and realistic narratives. They might appreciate stories that deal with adult relationships, emotional conflicts, and everyday life experiences. 
+
+As expected from young male audiences, popular combinations for shounen anime viewers include “Suspense" and "Gore”, and “Adventure" and "Organized Crime”, all of which suggest a preference for narratives that balance emotional depth with thrilling action, survival challenges, and criminal intrigue. However, the most favored combination is “Drama” and “Romantic Subtext”, with over 70,000 viewers adding it to their favorites. This is much higher than any other combination by a wide gap. While it may come as a surprise, it appears that young male viewers do have a strong preference for narratives that delve into emotional depth and subtle romantic elements. This is despite the fact that shounen anime is typically associated with action and adventure themes. Our guess is that overtly romantic themes can sometimes fall into cliche story lines. Romantic subtext allows for a more subtle and nuanced exploration of romantic elements. This can appeal to a broader audience, including those who may not typically seek out explicit romance stories.
+
+
+
+```{r, echo=F, warning=F, message=FALSE, fig.width=8, fig.height=3}
+anime2 = shoujo_data %>%
+  separate_rows(Themes, sep = ", ") %>%
+  separate_rows(Genres, sep = ", ")
+
+combinations = expand.grid(unique(anime2$Themes), unique(anime2$Genres))
+colnames(combinations) = c("Themes", "Genres")
+
+combinations = combinations %>%
+  mutate(Avg_Popularity = sapply(1:nrow(combinations), function(i) {
+    theme = combinations$Themes[i]
+    genre = combinations$Genres[i]
+    avg_popularity = mean(anime2$Favorites[anime2$Themes == theme & anime2$Genres == genre], na.rm = TRUE)
+    return(avg_popularity)
+  })) 
+
+combinations = combinations %>%
+  arrange(desc(Avg_Popularity))
+
+
+# Assuming you have the 'combinations' data frame
+
+# Filter for the top 20 combinations
+top_combinations <- combinations %>%
+  top_n(30, Avg_Popularity)
+
+heatmap_plot <- ggplot(top_combinations, aes(x = Themes, y = Genres, fill = Avg_Popularity)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = round(Avg_Popularity)), color = "black", size = 3) +  # Round to integer and add text labels inside the tiles
+  scale_fill_gradient2(low = "white", mid = "#FF9999", high = "red", midpoint = median(top_combinations$Avg_Popularity), guide = "colorbar") +  # Blue-to-red gradient
+  labs(title = "Top 30 Popular Themes and Genres Combinations in Shoujo Anime",
+       x = "Themes", y = "Genres", fill = "Average Popularity") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))  # Adjust hjust for title position
+
+heatmap_plot
+
+
+
+anime3 = shounen_data %>%
+  separate_rows(Themes, sep = ", ") %>%
+  separate_rows(Genres, sep = ", ")
+
+combinations = expand.grid(unique(anime3$Themes), unique(anime3$Genres))
+colnames(combinations) = c("Themes", "Genres")
+
+combinations = combinations %>%
+  mutate(Avg_Popularity = sapply(1:nrow(combinations), function(i) {
+    theme = combinations$Themes[i]
+    genre = combinations$Genres[i]
+    avg_popularity = mean(anime3$Favorites[anime3$Themes == theme & anime3$Genres == genre], na.rm = TRUE)
+    return(avg_popularity)
+  })) 
+
+combinations = combinations %>%
+  arrange(desc(Avg_Popularity))
+
+
+# Assuming you have the 'combinations' data frame
+
+# Filter for the top 20 combinations
+top_combinations <- combinations %>%
+  top_n(30, Avg_Popularity)
+
+heatmap_plot <- ggplot(top_combinations, aes(x = Themes, y = Genres, fill = Avg_Popularity)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = round(Avg_Popularity)), color = "black", size = 3) +  # Round to integer and add text labels inside the tiles
+  scale_fill_gradient2(low = "white", mid = "turquoise", high = "blue", midpoint = median(top_combinations$Avg_Popularity), guide = "colorbar") +  # Blue-to-red gradient
+  labs(title = "Top 30 Popular Themes and Genres Combinations in Shounen Anime",
+       x = "Themes", y = "Genres", fill = "Average Popularity") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))  # Adjust hjust for title position
+
+
+heatmap_plot
+
+
+```
+
+
+
+From the bar chart below of the top 10 genres and its corresponding sentiment score, Shounen anime have mostly negative scores. It is expected as shounen anime often involves themes of conflict, violence, tragedy, and hardship. These themes can introduce more negative words and emotions into the synopsis text, such as “death”, “fight”, “kill”, “betrayal”, “suffering”. These words can lower the overall sentiment score of the anime, and consequently, the genre.
+
+As we look at the graphs, we discover that shoujo anime are more fascinating to investigate. The prominence of the romance genre further consolidated my preconception that romantic relationships and themes hold a central position in shoujo anime. The popularity of fantasy genre indicates a desire for escapism and immersion in imaginative worlds. 
+
+However, when we have the scope expanded to the top 15 genres, we find something interesting in terms of sentiment within each genre. Although "Boys Love" and Girls Love" anime are both typically created with a female audience in mind, focusing on the romantic relationships between same-sex characters, BL have a negative sentiment, whereas GL tends to be positive overall. 
+
+Upon research, this might be the answer: BL anime often explores themes of unrequited love or complex relationships. This can introduce more elements of heartbreaks and emotional turmoil. BL anime also often includes elements of sexual tension and can delve into more explicit themes. These complexity could potentially result in a lower sentiment score. This finding is also corroborated by the fact that most of the BL genre shoujo anime belong to the "R - 17+ (violence & profanity)" rating. In contrast, GL anime place a stronger emphasis on emotional and spiritual connections between female characters, which often evoke a sense of warmth, understanding and fulfillment. 
+
+
+
+```{r, echo=F, warning=F, message=FALSE, fig.width=10, fig.height=4}
+shoujo_sentiments_aggregated <- shoujo_sentiments_aggregated %>%
+  filter(Genres != 'Unknown')
+
+genres_list = unlist(strsplit(shoujo_sentiments_aggregated$Genres, ", "))
+genre_frequencies = table(genres_list)
+top_10_genres = head(sort(genre_frequencies, decreasing=T), 10)
+top_15_genres = head(sort(genre_frequencies, decreasing=T), 15)
+
+genre_sentiment = sapply(names(top_15_genres), function(genre) {
+  mean(shoujo_sentiments_aggregated$sentiment[grepl(genre, shoujo_sentiments_aggregated$Genres)])
+})
+
+genre_sentiment_df = data.frame(Genre = names(top_15_genres), Mean_Sentiment = genre_sentiment)
+genre_data = data.frame(genre = names(top_10_genres), frequency = as.numeric(top_10_genres))
+
+plot1=ggplot(genre_data, aes(x = "", y = frequency, fill = genre)) +
+  geom_bar(width = 1, stat = "identity") +
+  coord_polar("y") +
+  labs(title = "Top 10 Genres in Shoujo Anime") +
+  geom_text(aes(label = paste0(genre, '\n', scales::percent(frequency / sum(frequency))), 
+                x = 1.3), 
+            position = position_stack(vjust = 0.5),
+            size = 2) +
+  theme_void() +
+  theme(legend.position = "right") +
+  scale_fill_brewer(palette = "Set3")+
+  theme(legend.position = "none")
+
+genre_sentiment_df$se <- sd(genre_sentiment_df$Mean_Sentiment) / sqrt(nrow(genre_sentiment_df))
+genre_sentiment_df$ci <- genre_sentiment_df$se * qt(0.975, df=nrow(genre_sentiment_df)-1)
+
+plot2=ggplot(genre_sentiment_df, aes(x = reorder(Genre, -desc(Mean_Sentiment)), y = Mean_Sentiment, fill = factor(ifelse(Mean_Sentiment >= 0, "Positive", "Negative")))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_errorbar(aes(ymin = Mean_Sentiment - ci, ymax = Mean_Sentiment + ci), width = 0.2) +
+  scale_fill_manual(values = c("#FF9999", "turquoise"), labels = c("Negative", "Positive")) +
+  labs(title = "Mean Sentiment by Genre in Shoujo Anime", x='',
+       y = "Mean Sentiment", fill = "Sentiment")+
+  coord_flip() +
+  theme_bw()+
+  theme(legend.position = "none")
+
+
+
+
+shounen_sentiments_aggregated <- shounen_sentiments_aggregated %>%
+  filter(Genres != 'Unknown')
+
+genres_list = unlist(strsplit(shounen_sentiments_aggregated$Genres, ", "))
+genre_frequencies = table(genres_list)
+top_10_genres = head(sort(genre_frequencies, decreasing=T), 10)
+top_15_genres = head(sort(genre_frequencies, decreasing=T), 15)
+
+
+genre_sentiment = sapply(names(top_15_genres), function(genre) {
+  mean(shounen_sentiments_aggregated$sentiment[grepl(genre, shounen_sentiments_aggregated$Genres)])
+})
+
+genre_sentiment_df = data.frame(Genre = names(top_15_genres), Mean_Sentiment = genre_sentiment)
+genre_data = data.frame(genre = names(top_10_genres), frequency = as.numeric(top_10_genres))
+
+plot3=ggplot(genre_data, aes(x = "", y = frequency, fill = genre)) +
+  geom_bar(width = 1, stat = "identity") +
+  coord_polar("y") +
+  labs(title = "Top 10 Genres in Shounen Anime") +
+  geom_text(aes(label = paste0(genre, '\n', scales::percent(frequency / sum(frequency))), 
+                x = 1.3), 
+            position = position_stack(vjust = 0.5),
+            size = 2) +
+  theme_void() +
+  theme(legend.position = "none") +
+  scale_fill_brewer(palette = "Set3")
+
+genre_sentiment_df$se <- sd(genre_sentiment_df$Mean_Sentiment) / sqrt(nrow(genre_sentiment_df))
+genre_sentiment_df$ci <- genre_sentiment_df$se * qt(0.975, df=nrow(genre_sentiment_df)-1)
+
+plot4=ggplot(genre_sentiment_df, aes(x = reorder(Genre, -desc(Mean_Sentiment)), y = Mean_Sentiment, fill = factor(ifelse(Mean_Sentiment >= 0, "Positive", "Negative")))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_errorbar(aes(ymin = Mean_Sentiment - ci, ymax = Mean_Sentiment + ci), width = 0.2) +
+  scale_fill_manual(values = c("#FF9999", "turquoise"), labels = c("Negative", "Positive")) +
+  labs(title = "Mean Sentiment by Genre in Shounen Anime", x='',
+       y = "Mean Sentiment", fill = "Sentiment")+
+  coord_flip() +
+  theme_bw()+
+  theme(legend.position = "none")
+
+combined_plots1 <- plot1 + plot2
+combined_plots1
+combined_plots2 <- plot3 + plot4
+combined_plots2
+
+```
+
+
+#### Part II Regression Model for Prediction
+
+To develop a regression model that predicts the score of an anime targeting adolescent viewers, we initiated the data preparation stage by focusing exclusively on Shounen and Shoujo demographics. To enhance the dataset for modeling efficiency, we eliminated extraneous columns, retaining only 11 essential features. Subsequently, to uphold data integrity, we removed rows containing null values, resulting in a refined dataset comprising 2449 entries out of the original 2771.
+
+Following this, we standardized the numerical data to ensure consistency in scale. With the processed dataset, we are poised for the application of machine learning algorithms. The preprocessed features are optimized for model training, and the target variables have undergone log transformation to improve predictive accuracy.
+
+We selected three models — Linear Regression, Random Forest Regressor, and XGBoost Regressor. We employed a 5-fold cross-validation to ensure the robustness of our models. After assessing and comparing their out-of-sample Root Mean Squared Errors (RMSE), we arrived at the following conclusions:
+
+```{r, echo=F}
+data <- data.frame(
+  Model = c('Null Model', "Linear Regression", "Random Forest", "XGBoost"),
+  Parameters = c("Null", 'Null',
+                 "max_depth: 30, min_samples_split: 5, n_estimators: 500",
+                 "learning_rate: 0.1, max_depth: 3, n_estimators: 200"),
+  `Best RMSE` = c(0.11276, 0.10069, 0.07184, 0.07156)
+)
+
+datatable(data, 
+          options = list(pageLength = 4, searching = FALSE),
+          rownames = FALSE)
+```
+
+The null model serves as a baseline or "naive" prediction that doesn't involve any learning from the features. It acts as a point of comparison for the more complex models. The RMSE for the null model is calculated using the mean of the target variable (`y_train`) as predictions for the test set.
+
+The initial linear regression model, with its default settings, produced a RMSE of 0.10069. This performance is expected given the simplicity of linear regression and lack of hyperparameter tuning.
+
+Next, we explored more sophisticated models, such as the Random Forest Regressor, an ensemble machine learning technique that leverages multiple decision trees to enhance predictive accuracy and mitigate overfitting. After an extensive search involving 27 different combinations and 135 model fits, we identified the optimal configuration with a `max_depth` (depth of each decision tree in the forest) of 30, `min_samples_split` (number of samples required to split an internal node) of 5 and `n_estimators` (number of trees in the forest) set to 500. This improved the RMSE to 0.07184, showcasing the benefits of using multiple decision trees to reduce overfitting and enhance prediction accuracy.
+
+Similarly, we tuned the XGBoost model with 27 candidate parameter sets and 135 fits. Unlike Random Forest, which constructs multiple decision trees independently and merges their outputs, XGBoost handles intricate patterns and refines predictive accuracy through iterative improvement of weak learners. The best-performing configuration had a `learning_rate` (step size) of 0.1, `max_depth` of 3, and `n_estimators` of 200, resulting in an RMSE of 0.07156. While this improvement is slight, it underscores XGBoost's efficiency in handling complex patterns through its gradient boosting framework.
+
+Both Random Forest and XGBoost models outperformed the baseline linear regression model, with XGBoost leading by a narrow margin. This indicates the superior predictive capabilities and robustness of these models against variations in the dataset. The results underscore the importance of hyperparameter tuning in unlocking optimal performance from complex models like Random Forest and XGBoost, even for those not familiar with these specific algorithms.
+
+Nevertheless, even though the linear model may not be optimal, we can still examine the coefficients in the linear regression formula to understand the impact of each feature on the score.
+
+$$
+\begin{align*}
+\hat{\textbf{Score}} &= \textbf{1.8584} \\
+&+ \textbf{(0.0229} \times \textbf{Type}) \\
+&+ \textbf{(0.0159} \times \textbf{Episodes}) \\
+&+ \textbf{(0.0204} \times \textbf{Source}) \\
+&+ \textbf{(-0.0034} \times \textbf{Demographics}) \\
+&+ \textbf{(-0.0005} \times \textbf{Duration_Minutes}) \\
+&+ \textbf{(-0.1134} \times \textbf{Rating}) \\
+&+ \textbf{(-0.0505} \times \textbf{Scored_Users}) \\
+&+ \textbf{(-0.0950} \times \textbf{Members}) \\
+&+ \textbf{(-0.2069} \times \textbf{Favorites})
+\end{align*}
+$$
+
+
+Analyzing the linear regression formula reveals that **Favorites**, **Rating**, and **Members** exert a notable impact on the **Score**. These variables exhibit substantial coefficients, indicating a significant influence on the predicted **Score** values as their respective values increase or decrease. **Duration_Minutes** has a coefficient of 0.0005, implying baisally no observable direct effect on the **Score**.
+
+We can also observe the performance of the model from the visualization of the model:
+
+The scatter plot for the Linear Regression model displays the predicted versus actual values, revealing the model's accuracy in estimating the **Score**. The red dashed line represents perfect predictions, where the predicted values match the actual values exactly. Points scattered around this line indicate the variance from the perfect prediction. While many predictions are reasonably close to the line, indicating a decent fit, there is a visible spread, especially for actual values on both ends, suggesting that the model has limitations in capturing the trend for anime with these scores.
+<BR>
+```{r, echo=FALSE, message=FALSE, warning=F}
+
+includeHTML("figure2.html")
+```
+<BR>
+For the Random Forest regressor, the scatter plot shows a tighter clustering of points around the red dashed line compared to the Linear Regression model, which suggests a better fit to the data. The concentration of points near the line indicates that the Random Forest model has a higher predictive accuracy. Nonetheless, some spread persists, particularly at the lower and higher ends of the scale, which may imply that certain extreme values are not as precisely predicted by this model.
+<BR>
+```{r, echo=FALSE, message=FALSE, warning=F}
+
+includeHTML("figure3.html")
+```
+<BR>
+The visualization for the XGBoost model depicts a similar pattern to the Random Forest, with predictions closely hugging the line of perfect prediction. The cluster of points around the dashed line suggests that XGBoost provides a robust prediction across a range of scores. The model appears to handle both the lower and higher ends of the score spectrum a bit better.
+<BR>
+```{r, echo=FALSE, message=FALSE, warning=F}
+
+includeHTML("figure1.html")
+```
+<BR>
+The XGBoost model outperforms the linear model in terms of RMSE, it might be more beneficial to focus on understanding feature importance rather than trying to interpret the coefficients. 
+<BR>
+```{r, echo=FALSE, message=FALSE, warning=F}
+includeHTML("feature_importance.html")
+
+```
+<BR>
+The bar chart highlights which variables are most influential when predicting the score of anime.
+
+The **Favorites** feature has the highest importance, suggesting it is the most significant predictor of an anime's score. This is followed by **Members**, **Source_Manga** and **Scored_Users**, which also have high importance scores.
+
+The next set of features includes **Source_Web_Manga**, **Type_Movie**, **Rating_R+ (mild nudity)**, **Type_TV**, and **Type_OVA**, each carrying moderate importance in the model. These features point to the source material of the anime, its type, and content rating as influential in how it is scored. Other features like **Duration_Minutes**, **Episodes**, and various demographic and source-related variables have lower relative importance. 
+
+The chart demonstrates that community engagement metrics (**Favorites**, **Members**, **Scored_Users**) are the most impactful on an anime's score, followed by content-related features (**Source**, **Type**, **Rating**), with some nuances based on the specific demographic and source type.
+
+<BR>
+In our final step, we employed the XGBoost model to predict scores for anime entries with missing scores in our dataset. To assess the accuracy of these predictions, we compared them with scores from IMDb. Moreover, we delved into viewer comments to gauge the plausibility of our predictions. Leveraging the random library in Python, we employed our predictive models to evaluate scores for five randomly chosen anime, repeatedly sampling from a pool of over 200 unscored anime titles. This iterative approach indicate a satisfactory level of score accuracy in our predictions matching that of IMDb. We selected three well-known anime for inclusion in our report, enhancing the reliability of our comparative assessment for our audience.
+
+This result indicates that our model captures the key factors influencing scores rather effectively. Notably, there are numerous positive reviews on these anime titles, which reinforces the credibility of our model. These favorable assessments align with our predicted scores, highlighting the XGBoost model's ability to reflect viewer preferences accurately. 
+
+<BR>
+```{r, echo=FALSE, message=FALSE}
+anime_selected <- data.frame(
+  Title = c("Akuyaku Reijou nanode Last Boss wo Kattemimashita",
+            "Bishoujo Senshi Sailor Moon Cosmos Movie",
+            "Detective Conan: Love Story at Police Headquarters - Wedding Eve"
+            ),
+  
+  Demographics = c("Shoujo",
+                   "Shoujo",
+                  "Shounen"
+                  ),
+  
+  Predicted_Score = c(7.181890, 6.886652, 6.260386),
+  
+  IMDb_Rating = c(6.9, 7.7, 6.3)
+)
+
+datatable(anime_selected, 
+          options = list(pageLength = 3, searching = FALSE),
+          rownames = FALSE)
+```
+
+It's important to note that, despite both sites using the same score scale ranging from 0 to 10, this comparison should be viewed as relative rather than absolute. The reason lies in the inherent differences between the rating systems and user communities of our dataset from MyAnimeList.net and IMDb. While the scores may align to some extent, various factors such as cultural nuances, viewer expectations, and rating criteria may contribute to a nuanced interpretation. Therefore, one should approach this comparison with an understanding that the scores are relative and not necessarily directly interchangeable between the two platforms.
+
+A more effective way to evaluate our model's accuracy is to select a specific anime from our dataset with missing scores, calculate its percentile within our dataset, and then perform a similar percentile calculation for the same anime on IMDb. Comparing these two percentiles allows us to assess our model's accuracy more precisely. However, it's worth noting that IMDb lacks specific demographic filters for anime fans, making it challenging to filter out anime targeting only adolescents. Despite this limitation, we find this method more convincing, as it offers a nuanced comparison by normalizing scores within their respective platforms. It takes into account the diverse user base on IMDb and the distinct preferences of anime enthusiasts, especially those in the adolescent demographic. This approach, using percentiles, could provide a more comprehensive and meaningful evaluation of our model's performance.
+
+
+
+## Conclusion
+
+In our journey to unravel the world of anime, we embarked on an exploratory data  analysis of a comprehensive anime dataset. Our journey marches on deconstructing the intricacy of shoujo and shounen anime that target primarily adolescents. Our initial focus was conducting a sentiment analysis of the synopses, which served as a window into the emotional landscape of shoujo and shounen anime. The result revealed a consistent emotional tone over the years, with shoujo anime displaying a slightly higher positive sentiment. This consistency in emotional expression speaks volumes about the enduring appeal of these genres and their resonance with target demographics. However, our curiosity was piqued by occasional spikes in negative sentiment scores in certain years. These anomalies hinted at specific influences or events that might have temporarily shifted the emotional tone during those periods. 
+
+Furthermore, the prominence of romance in shoujo anime and themes of personal growth in shounen anime illustrate the varied emotional landscapes these type of anime navigate. Building on these initial insights, we decided to delve deeper into the interplay between themes and genres. Both shoujo and shounen anime viewers appreciate narratives that break away from traditional norms and expectations.
+
+Last but not least, our findings on the sentiment associated with different themes, such as the contrast between "Boys Love" and "Girls Love", offer nuanced insights into the complex emotional fabric of anime storytelling. These results underscore the rich diversity and intricate emotional dynamics within the anime genre, providing valuable perspectives for creators, viewers, and researchers alike.
+
+In our sentiment analysis project, we used the Bing lexicon and the tidytext package in R to calculate sentiment scores for each shoujo anime based on the synopsis text. These scores, representing the overall emotional tone, were used to compare and group anime. However, this method has limitations like ignoring context, sarcasm, or word intensity, so bear in mind that the scores are not absolute measures of emotion.
+
+For the second part, we focus on predicting anime scores for teenage audiences. Our approach involved a sophisticated interplay of data preparation and the application of advanced machine learning techniques. The key was to develop a regression model adept at forecasting the scores of anime specifically targeting adolescent viewers. This task necessitated a thorough evaluation and refinement of our dataset, leading us to identify and focus on those variables most influential in determining anime scores.
+
+The rigorous analysis led us to deploy several predictive models, with the XGBoost model emerging as a standout for its remarkable accuracy in mirroring actual IMDb scores and viewer feedbacks. This high degree of predictive precision not only validates the efficacy of our model but also underscores the critical importance of community engagement metrics and content characteristics in shaping an anime's success. Our study reveals that these factors play a central role in captivating the teenage audience, a demographic known for its distinct preferences and viewing habits.
+
+In conclusion, the insights from our predictive modeling provide a valuable tool for understanding and forecasting the preferences of teenage anime viewers. The alignment of our model's predictions with real-world ratings and feedback highlights its potential as a strategic asset in entertainment analytics. This research not only enriches our comprehension of the factors influencing anime ratings but also sets a promising path for future advancements in the field, opening doors to more targeted and refined analysis tailored to the evolving tastes of the anime audience.
+
+
+```{r, include=FALSE}
+
+# anime.df$logFavorites <- log1p(anime.df$Favorites)
+# anime.df$logScores <- log1p(anime.df$Score)
+# 
+# # Scatter plot with 2D density plot using transformed variables
+# ggplot(anime.df, aes(x = logFavorites, y = logScores)) +
+#   geom_point(alpha = 0.5) +  # Add scatter plot with transparency
+#   geom_density_2d() +         # Add 2D density plot
+#   labs(title = "Transformed 2D Density Plot of log(Favorites) vs. log(Scores)",
+#        x = "log(Favorites)",
+#        y = "log(Scores)")
+
+```
+
+
+
+
+
+
+
+
+
+
+
